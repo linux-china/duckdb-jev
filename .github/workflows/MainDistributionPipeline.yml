@@ -16,23 +16,21 @@ jobs:
     name: Build extension binaries
     uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@v1.5-variegata
     with:
-      duckdb_version: v1.5.4
+      duckdb_version: v1.5.5
       ci_tools_version: v1.5-variegata
       extension_name: jev
-      # jev's SQL tests need the mock API from test/mock_api.py, which the
-      # distribution runners have no way to start - the mock-tests job below
-      # builds once more and runs them.
-      skip_tests: true
 
   code-quality-check:
     name: Code Quality Check
     uses: duckdb/extension-ci-tools/.github/workflows/_extension_code_quality.yml@v1.5-variegata
     with:
-      duckdb_version: v1.5.4
+      duckdb_version: v1.5.5
       ci_tools_version: v1.5-variegata
       extension_name: jev
       format_checks: 'format;tidy'
 
+  # test/sql/jev.test is gated on JEV_MOCK_RUNNING, so the distribution job above skips it
+  # on every platform. This is where it actually runs.
   mock-tests:
     name: SQL tests against the mock API
     runs-on: ubuntu-latest
@@ -44,8 +42,13 @@ jobs:
       - name: Install build tools
         run: sudo apt-get update && sudo apt-get install -y cmake ninja-build libssl-dev
 
+      - name: Set up ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: mock-tests-ubuntu-latest
+
       - name: Build
-        run: GEN=ninja make release
+        run: GEN=ninja EXT_FLAGS="-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache" make release
 
       - name: Run the SQL tests against the mock API
         run: ./test/run.sh
