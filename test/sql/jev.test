@@ -1,23 +1,239 @@
 # name: test/sql/jev.test
-# description: test jev extension
+# description: jev against the deterministic mock API (test/mock_api.py, started by test/run.sh)
 # group: [sql]
 
-# Before we load the extension, this will fail
-statement error
-SELECT jev('Sam');
-----
-Catalog Error: Scalar Function with name jev does not exist!
-
-# Require statement will ensure this test is run with this extension loaded
 require jev
 
-# Confirm the extension works
-query I
-SELECT jev('Sam');
-----
-...........🦆 Sam
+require json
 
+# The mock listens on 127.0.0.1:8765 and only accepts the key "test-key".
+statement ok
+SET jev_api_url = 'http://127.0.0.1:8765/v1/systemone';
+
+statement ok
+SET jev_api_key = 'test-key';
+
+statement ok
+SET jev_notices = false;
+
+statement ok
+CREATE TABLE cities(id INTEGER, name VARCHAR, country VARCHAR);
+
+statement ok
+INSERT INTO cities VALUES (1, 'Paris', 'France'), (2, 'Berlin', 'Germany'), (3, 'Tokyo', 'Japan'), (4, 'Cairo', 'Egypt'), (5, 'Lima', 'Peru');
+
+# version
 query I
-SELECT jev_openssl_version('Michael') ILIKE 'Jev Michael, my linked OpenSSL version is OpenSSL%';
+SELECT length(jev_version()) > 0;
 ----
 true
+
+# predicate: only the row whose JSON contains "France" clears the 0.5 threshold
+query I
+SELECT name FROM cities c WHERE jev(c, 'the country is France') ORDER BY id;
+----
+Paris
+
+# probabilities
+query II
+SELECT name, jev_prob(c, 'the country is France') FROM cities c ORDER BY id;
+----
+Paris	0.9
+Berlin	0.1
+Tokyo	0.1
+Cairo	0.1
+Lima	0.1
+
+# threshold as an argument
+query I
+SELECT count(*) FROM cities c WHERE jev(c, 'the country is France', 0.95);
+----
+0
+
+# threshold as a setting
+statement ok
+SET jev_threshold = 0.95;
+
+query I
+SELECT count(*) FROM cities c WHERE jev(c, 'the country is France');
+----
+0
+
+statement ok
+SET jev_threshold = 0.05;
+
+query I
+SELECT count(*) FROM cities c WHERE jev(c, 'the country is France');
+----
+5
+
+statement ok
+RESET jev_threshold;
+
+# cache hits: the condition above has already been evaluated for all five rows
+statement ok
+CREATE TEMP TABLE hits_before AS SELECT json_extract_string(jev_stats(), '$.cache_hits')::BIGINT AS h;
+
+statement ok
+SELECT jev_prob(c, 'the country is France') FROM cities c;
+
+query I
+SELECT json_extract_string(jev_stats(), '$.cache_hits')::BIGINT - (SELECT h FROM hits_before);
+----
+5
+
+# jev_batch_size drives the number of requests: 5 rows, 2 per request -> 3 requests
+statement ok
+SET jev_batch_size = 2;
+
+statement ok
+CREATE TEMP TABLE requests_before AS SELECT json_extract_string(jev_stats(), '$.requests')::BIGINT AS r;
+
+statement ok
+SELECT jev_prob(c, 'the city is in Europe') FROM cities c;
+
+query I
+SELECT json_extract_string(jev_stats(), '$.requests')::BIGINT - (SELECT r FROM requests_before);
+----
+3
+
+statement ok
+RESET jev_batch_size;
+
+# score: the mock answers len(row_json) % len(levels)
+query II
+SELECT name, jev_score(c, 'how big is this city?', ['small', 'medium', 'large']) FROM cities c ORDER BY id;
+----
+Paris	0.0
+Berlin	2.0
+Tokyo	2.0
+Cairo	2.0
+Lima	0.0
+
+query II
+SELECT name, jev_score_norm(c, 'how big is this city?', ['small', 'medium', 'large']) FROM cities c ORDER BY id;
+----
+Paris	0.0
+Berlin	1.0
+Tokyo	1.0
+Cairo	1.0
+Lima	0.0
+
+# choice
+query II
+SELECT name, jev_choice(c, 'which hemisphere?', ['north', 'south']) FROM cities c ORDER BY id;
+----
+Paris	north
+Berlin	north
+Tokyo	south
+Cairo	south
+Lima	south
+
+# confidence of a score answer
+query I
+SELECT DISTINCT jev_confidence(c, 'how big is this city?', 'score', ['small', 'medium', 'large']) FROM cities c;
+----
+0.75
+
+# raw answer object
+query II
+SELECT json_extract_string(jev_eval(c, 'the country is France', 'noul', NULL), '$.type'),
+       json_extract(jev_eval(c, 'the country is France', 'noul', NULL), '$.noul')::DOUBLE
+FROM cities c WHERE id = 1;
+----
+noul	0.9
+
+# a subquery alias works the same as a table alias
+query I
+SELECT count(*) FROM (SELECT * FROM cities WHERE id <= 2) s WHERE jev(s, 'the country is France');
+----
+1
+
+# struct_pack works too, and repeats hit the cache
+query I
+SELECT jev_prob(struct_pack(id := 1, name := 'Paris', country := 'France'), 'the country is France');
+----
+0.9
+
+# rows whose JSON hashes to the same value under DuckDB's string Hash() must still
+# get their own judgment - {"id":60,...} and {"id":68,...} collide there
+statement ok
+CREATE TABLE collisions AS SELECT i AS id, 'row ' || i AS label FROM range(60, 70) t(i);
+
+query II
+SELECT id, jev_prob(c, 'the label mentions 68') FROM collisions c WHERE id IN (60, 68) ORDER BY id;
+----
+60	0.1
+68	0.9
+
+# a NULL row is answered with NULL, without an API call
+query I
+SELECT jev_eval_json(NULL, 'the country is France', 'noul', NULL) IS NULL;
+----
+true
+
+# an empty question is a user error
+statement error
+SELECT jev_prob(c, '') FROM cities c;
+----
+jev: empty question
+
+# clearing the cache empties it
+statement ok
+SELECT jev_cache_clear();
+
+query I
+SELECT json_extract_string(jev_stats(), '$.cache_entries')::BIGINT;
+----
+0
+
+# stats are cumulative and carry token accounting
+query III
+SELECT json_extract_string(jev_stats(), '$.requests')::BIGINT > 0,
+       json_extract_string(jev_stats(), '$.input_tokens')::BIGINT > 0,
+       json_extract_string(jev_stats(), '$.estimated_cost_usd')::DOUBLE > 0;
+----
+true	true	true
+
+# HTTP errors from the API surface verbatim
+statement error
+SELECT jev_prob(c, 'this row mentions trigger422') FROM cities c;
+----
+jev: TypeSafe API error 422
+
+statement ok
+SET jev_api_key = 'not-the-test-key';
+
+statement error
+SELECT jev_prob(c, 'the country is Chile') FROM cities c;
+----
+jev: TypeSafe API error 401
+
+# no key anywhere is a user error, not an HTTP round trip
+statement ok
+SET jev_api_key = '';
+
+statement error
+SELECT jev_prob(c, 'the country is Bolivia') FROM cities c;
+----
+jev: no API key
+
+statement ok
+SELECT jev_set_api_key('test-key');
+
+# a URL without a scheme is treated as plain HTTP
+statement ok
+SELECT jev_set_api_url('127.0.0.1:8765/v1/systemone');
+
+query I
+SELECT jev_prob(c, 'the country is Japan') FROM cities c WHERE id = 3;
+----
+0.9
+
+statement ok
+SELECT jev_set_model('jev-latest');
+
+query I
+SELECT current_setting('jev_model');
+----
+jev-latest

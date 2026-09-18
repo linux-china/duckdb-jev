@@ -5,5 +5,7 @@ duckdb_extension_load(jev
     SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}
 )
 
-# Any extra extensions that should be built
-# e.g.: duckdb_extension_load(json)
+# jev's macros extract fields with json_extract_string, so the json extension has
+# to be available. It is autoloadable in a released DuckDB; building it in keeps
+# the test binary self-contained.
+duckdb_extension_load(json)
