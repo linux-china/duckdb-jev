@@ -5,6 +5,8 @@ Rules (see docs/DESIGN.md):
 
 * ``Authorization`` must be exactly ``Bearer test-key``, otherwise 401.
 * A request whose condition or instructions mention ``trigger422`` returns 422.
+* The first request mentioning ``trigger429once`` returns 429 with ``Retry-After: 1``;
+  every later one is answered normally, so a test can prove the retry path works.
 * noul   -> 0.9 when the last word of the condition occurs in the row JSON, else 0.1.
 * score  -> score = len(row_json) % len(criteria), confidence 0.75.
 * choice -> choice = criteria_keys[len(row_json) % len(criteria)], confidence 0.75.
@@ -18,10 +20,23 @@ from __future__ import annotations
 
 import json
 import sys
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 API_KEY = "test-key"
+DEFAULT_PORT = 8765
 CONFIDENCE = 0.75
+
+#: How often each "trigger429once" marker has been seen, so the 429 happens exactly once.
+_seen_markers: dict[str, int] = {}
+_seen_lock = threading.Lock()
+
+
+def first_time_seen(marker: str) -> bool:
+    with _seen_lock:
+        count = _seen_markers.get(marker, 0)
+        _seen_markers[marker] = count + 1
+        return count == 0
 
 
 def row_text(row) -> str:
@@ -75,11 +90,13 @@ class Handler(BaseHTTPRequestHandler):
         if "-v" in sys.argv:
             sys.stderr.write("mock_api: " + (fmt % args) + "\n")
 
-    def send_json(self, status: int, payload: dict) -> None:
+    def send_json(self, status: int, payload: dict, extra_headers: dict | None = None) -> None:
         body = json.dumps(payload).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        for name, value in (extra_headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(body)
 
@@ -105,6 +122,14 @@ class Handler(BaseHTTPRequestHandler):
 
         if "trigger422" in raw:
             self.send_json(422, {"error": "unprocessable entity: trigger422"})
+            return
+
+        if "trigger429once" in raw and first_time_seen("trigger429once"):
+            self.send_json(
+                429,
+                {"error": "slow down: trigger429once"},
+                extra_headers={"Retry-After": "1"},
+            )
             return
 
         state = body.get("state") or {}
@@ -135,7 +160,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> int:
-    port = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else 8765
+    port = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else DEFAULT_PORT
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     sys.stderr.write(f"mock_api: listening on http://127.0.0.1:{port}/v1/systemone\n")
     sys.stderr.flush()

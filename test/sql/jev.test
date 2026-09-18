@@ -6,6 +6,10 @@ require jev
 
 require json
 
+# Only run when test/run.sh (or CI) has the mock API up: the distribution pipeline runs
+# make test on every platform and has no way to start it.
+require-env JEV_MOCK_RUNNING 1
+
 # The mock listens on 127.0.0.1:8765 and only accepts the key "test-key".
 statement ok
 SET jev_api_url = 'http://127.0.0.1:8765/v1/systemone';
@@ -187,6 +191,11 @@ SELECT json_extract_string(jev_stats(), '$.cache_entries')::BIGINT;
 ----
 0
 
+query I
+SELECT typeof(jev_stats());
+----
+JSON
+
 # stats are cumulative and carry token accounting
 query III
 SELECT json_extract_string(jev_stats(), '$.requests')::BIGINT > 0,
@@ -194,6 +203,23 @@ SELECT json_extract_string(jev_stats(), '$.requests')::BIGINT > 0,
        json_extract_string(jev_stats(), '$.estimated_cost_usd')::DOUBLE > 0;
 ----
 true	true	true
+
+# a 429 with Retry-After is retried, and the retry is counted separately
+statement ok
+CREATE TEMP TABLE retries_before AS
+SELECT json_extract_string(jev_stats(), '$.requests')::BIGINT AS r,
+       json_extract_string(jev_stats(), '$.retries')::BIGINT AS t;
+
+query I
+SELECT jev_prob(c, 'the country is trigger429once') FROM cities c WHERE id = 1;
+----
+0.1
+
+query II
+SELECT json_extract_string(jev_stats(), '$.requests')::BIGINT - (SELECT r FROM retries_before),
+       json_extract_string(jev_stats(), '$.retries')::BIGINT - (SELECT t FROM retries_before);
+----
+1	1
 
 # HTTP errors from the API surface verbatim
 statement error
