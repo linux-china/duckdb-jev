@@ -15,8 +15,13 @@ First release.
   `jev_timeout` and `jev_notices`.
 * Rows are batched per request and requested in parallel; answers are cached per
   `(question, kind, options)` and row for the lifetime of the database instance.
-* Requests retry 429, 529, 5xx and transport errors with exponential backoff;
-  every other HTTP status raises `jev: TypeSafe API error <code> <body>`.
+* Requests retry 429, 529, 5xx and transport errors with exponential backoff, or
+  after the `Retry-After` a 429/503 asks for (capped at 30 s); every other HTTP
+  status raises `jev: TypeSafe API error <code> <body>`.
+* `jev_stats()` returns `requests` (successful responses), `retries`, `batches`,
+  `rows_evaluated`, `cache_hits`, token counts, `estimated_cost_usd`, `api_ms`
+  (round trips only), `errors` and `cache_entries`.
+* Built against DuckDB 1.5.5.
 
 Not yet covered: `CREATE SECRET` integration, a persistent on-disk cache, and
 HTTP from a WASM build (the WASM platforms are excluded from the release).
