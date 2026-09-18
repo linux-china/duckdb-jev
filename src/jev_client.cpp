@@ -263,7 +263,7 @@ JevResponse JevPostBatch(const JevConfig &config, const string &question, const 
 		}
 		last_error = StringUtil::Format("TypeSafe API error %d %s", res->status, Truncate(res->body, 300));
 	}
-	throw InvalidInputException("jev: %s (gave up after %llu attempts)", last_error, (unsigned long long)MAX_ATTEMPTS);
+	throw InvalidInputException("jev: %s (gave up after %llu attempts)", last_error, MAX_ATTEMPTS);
 }
 
 } // namespace duckdb

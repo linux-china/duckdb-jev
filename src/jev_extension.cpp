@@ -219,10 +219,9 @@ void JevEvalJsonFunction(DataChunk &args, ExpressionState &state, Vector &result
 		if (config.notices) {
 			std::cerr << StringUtil::Format(
 			                 "jev: %llu rows, 1 request, %lld input + %lld output tokens, $%.6f, %lld ms\n",
-			                 (unsigned long long)batch.count, (long long)batch.response.usage.input_tokens,
-			                 (long long)batch.response.usage.output_tokens,
-			                 double(batch.response.usage.input_tokens) * JevState::USD_PER_INPUT_TOKEN,
-			                 (long long)batch.response.api_ms)
+			                 batch.count, batch.response.usage.input_tokens, batch.response.usage.output_tokens,
+			                 static_cast<double>(batch.response.usage.input_tokens) * JevState::USD_PER_INPUT_TOKEN,
+			                 batch.response.api_ms)
 			          << std::flush;
 		}
 		auto &group = groups[batch.group];
@@ -246,10 +245,9 @@ void JevStatsFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto json = StringUtil::Format(
 	    "{\"requests\":%lld,\"batches\":%lld,\"rows_evaluated\":%lld,\"cache_hits\":%lld,\"input_tokens\":%lld,"
 	    "\"output_tokens\":%lld,\"estimated_cost_usd\":%.9f,\"api_ms\":%lld,\"errors\":%lld,\"cache_entries\":%llu}",
-	    (long long)stats.requests, (long long)stats.batches, (long long)stats.rows_evaluated,
-	    (long long)stats.cache_hits, (long long)stats.input_tokens, (long long)stats.output_tokens,
-	    double(stats.input_tokens) * JevState::USD_PER_INPUT_TOKEN, (long long)stats.api_ms, (long long)stats.errors,
-	    (unsigned long long)jev_state->CacheEntries());
+	    stats.requests, stats.batches, stats.rows_evaluated, stats.cache_hits, stats.input_tokens, stats.output_tokens,
+	    static_cast<double>(stats.input_tokens) * JevState::USD_PER_INPUT_TOKEN, stats.api_ms, stats.errors,
+	    jev_state->CacheEntries());
 	result.SetVectorType(VectorType::CONSTANT_VECTOR);
 	ConstantVector::GetData<string_t>(result)[0] = StringVector::AddString(result, json);
 }
@@ -310,7 +308,7 @@ const DefaultMacro JEV_MACROS[] = {
     {DEFAULT_SCHEMA, "jev_confidence", {"rec", "question", "kind", "options", nullptr}, {{nullptr, nullptr}},
      "json_extract(jev_eval_json(to_json(rec)::VARCHAR, question, kind, options), '$.confidence')::DOUBLE"},
     {DEFAULT_SCHEMA, "jev_eval", {"rec", "question", "kind", "options", nullptr}, {{nullptr, nullptr}},
-     "jev_eval_json(to_json(rec)::VARCHAR, question, kind, options)"},
+     "jev_eval_json(to_json(rec)::VARCHAR, question, kind, options)::JSON"},
 };
 // clang-format on
 
