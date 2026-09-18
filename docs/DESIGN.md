@@ -1,4 +1,4 @@
-# duck-jev — design
+# duckdb-jev — design
 
 **Status:** approved 2026-09-17. Idea credit: [pg-jev](https://github.com/realZachi/pg-jev)
 (natural-language `WHERE` clauses for PostgreSQL). This is a clean-room DuckDB
@@ -95,7 +95,7 @@ replaces pg-jev's whole-table read-ahead. Per chunk:
    noul: `{"type":"noul","instructions":"Does the record `rows[i]` satisfy the condition stated in `condition`?","criteria":{"true":..,"false":..}}`;
    score: `{"type":"score","instructions":"Rate the record `rows[i]`: <question>","criteria":[levels]}`;
    choice: `{"type":"choice","instructions":"For the record `rows[i]`: <question>","criteria":{option: null}}`.
-   Headers: `Authorization: Bearer`, `Content-Type: application/json`, `User-Agent: duck-jev/<version>`.
+   Headers: `Authorization: Bearer`, `Content-Type: application/json`, `User-Agent: duckdb-jev/<version>`.
 4. Retry: 429/529/5xx and transport errors with exponential backoff (0.5 s
    doubling to 8 s, 6 attempts); other HTTP errors raise
    `InvalidInputException("jev: TypeSafe API error <code> <body[:300]>")`.

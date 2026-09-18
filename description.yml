@@ -11,7 +11,7 @@ extension:
     - mberg
 
 repo:
-  github: recodelabs/duck-jev
+  github: recodelabs/duckdb-jev
   ref: main
 
 docs:

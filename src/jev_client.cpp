@@ -257,7 +257,7 @@ JevResponse JevPostBatch(const JevConfig &config, const string &question, const 
 	    {"Authorization", "Bearer " + config.api_key},
 	    // Content-Type is passed to Post() below; listing it here too would send the
 	    // header twice, which api.typesafe.ai rejects with a 422 (body read as a string).
-	    {"User-Agent", string("duck-jev/") + JevVersion()},
+	    {"User-Agent", string("duckdb-jev/") + JevVersion()},
 	};
 
 	string last_error;

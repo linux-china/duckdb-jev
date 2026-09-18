@@ -30,11 +30,11 @@ LOAD jev;
 ```
 
 **Until then, load a build directly.** Every push builds binaries for Linux, macOS and
-Windows in the [Actions](https://github.com/recodelabs/duck-jev/actions) tab (artifact
+Windows in the [Actions](https://github.com/recodelabs/duckdb-jev/actions) tab (artifact
 `jev-…-<platform>` inside the "Build extension binaries" run), or build it yourself:
 
 ```bash
-git clone --recurse-submodules https://github.com/recodelabs/duck-jev.git && cd duck-jev
+git clone --recurse-submodules https://github.com/recodelabs/duckdb-jev.git && cd duckdb-jev
 GEN=ninja make release          # needs cmake, ninja and OpenSSL (vcpkg or brew/apt); compiles DuckDB too
 # -> build/release/extension/jev/jev.duckdb_extension
 ```
@@ -227,7 +227,7 @@ is pending, so for now install from a build (see [Install](#install)).
 
 ## Credits
 
-duck-jev was inspired by [pg-jev](https://github.com/realZachi/pg-jev), Zachi's
+duckdb-jev was inspired by [pg-jev](https://github.com/realZachi/pg-jev), Zachi's
 natural-language `WHERE` clauses for PostgreSQL, which showed how well a calibrated
 yes/no model fits inside a SQL predicate. This is an independent implementation of that
 idea for DuckDB; the two share no code. Row judgments come from
