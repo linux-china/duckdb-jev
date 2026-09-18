@@ -81,18 +81,31 @@ public:
 		if (entry == cache.end()) {
 			return false;
 		}
-		auto answer_entry = entry->second.find(row_hash);
-		if (answer_entry == entry->second.end() || answer_entry->second.row_json != row_json) {
+		auto bucket = entry->second.find(row_hash);
+		if (bucket == entry->second.end()) {
 			return false;
 		}
-		answer = answer_entry->second.answer;
-		stats.cache_hits++;
-		return true;
+		for (auto &cached : bucket->second) {
+			if (cached.row_json == row_json) {
+				answer = cached.answer;
+				stats.cache_hits++;
+				return true;
+			}
+		}
+		return false;
 	}
 
 	void PutAnswer(const string &cache_key, hash_t row_hash, const string &row_json, const string &answer) {
 		lock_guard<mutex> guard(lock);
-		cache[cache_key][row_hash] = JevCachedAnswer {row_json, answer};
+		//! Colliding rows live side by side in the bucket instead of evicting each other.
+		auto &bucket = cache[cache_key][row_hash];
+		for (auto &cached : bucket) {
+			if (cached.row_json == row_json) {
+				cached.answer = answer;
+				return;
+			}
+		}
+		bucket.push_back(JevCachedAnswer {row_json, answer});
 	}
 
 	void Clear() {
@@ -104,7 +117,9 @@ public:
 		lock_guard<mutex> guard(lock);
 		idx_t total = 0;
 		for (auto &entry : cache) {
-			total += entry.second.size();
+			for (auto &bucket : entry.second) {
+				total += bucket.second.size();
+			}
 		}
 		return total;
 	}
@@ -125,17 +140,19 @@ public:
 		stats.api_ms += api_ms;
 	}
 
-	//! A batch that never got an answer: it counts as an attempted batch and an error,
-	//! but not as a request.
-	void RecordFailedBatch() {
+	//! A batch that never got an answer: it counts as an attempted batch and an error, but
+	//! not as a request. The attempts it did make still show up in retries and api_ms.
+	void RecordFailedBatch(int64_t api_ms, int64_t retries) {
 		lock_guard<mutex> guard(lock);
 		stats.batches++;
 		stats.errors++;
+		stats.retries += retries;
+		stats.api_ms += api_ms;
 	}
 
 private:
 	mutex lock;
-	unordered_map<string, unordered_map<hash_t, JevCachedAnswer>> cache;
+	unordered_map<string, unordered_map<hash_t, vector<JevCachedAnswer>>> cache;
 	JevStats stats;
 };
 

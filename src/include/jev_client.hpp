@@ -37,9 +37,14 @@ struct JevResponse {
 	//! One JSON answer object per row of the request, in request order.
 	vector<string> answers;
 	JevUsage usage;
+};
+
+//! What a batch spent. Filled in as the attempts happen, so a batch that ends up throwing
+//! still reports the round trips it made.
+struct JevAttempts {
 	//! Time spent in HTTP round trips, excluding the backoff sleeps between them.
 	int64_t api_ms = 0;
-	//! Attempts that had to be repeated before this response arrived.
+	//! Attempts that had to be repeated.
 	int64_t retries = 0;
 };
 
@@ -51,7 +56,8 @@ const char *JevVersion();
 
 //! POSTs one batch of rows with one question and returns one answer per row.
 //! Retries 429/529/5xx and transport errors; throws InvalidInputException otherwise.
+//! `attempts` is updated whether the call succeeds or throws.
 JevResponse JevPostBatch(const JevConfig &config, const string &question, const string &kind,
-                         const vector<string> &options, const vector<string> &rows);
+                         const vector<string> &options, const vector<string> &rows, JevAttempts &attempts);
 
 } // namespace duckdb

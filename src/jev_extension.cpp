@@ -29,6 +29,7 @@ struct JevBatch {
 	idx_t offset;
 	idx_t count;
 	JevResponse response;
+	JevAttempts attempts;
 	std::exception_ptr error;
 };
 
@@ -70,7 +71,7 @@ void RunBatches(const JevConfig &config, vector<JevGroup> &groups, vector<JevBat
 				auto &group = groups[batch.group];
 				vector<string> rows(group.rows.begin() + NumericCast<int64_t>(batch.offset),
 				                    group.rows.begin() + NumericCast<int64_t>(batch.offset + batch.count));
-				batch.response = JevPostBatch(config, group.question, group.kind, group.options, rows);
+				batch.response = JevPostBatch(config, group.question, group.kind, group.options, rows, batch.attempts);
 			} catch (...) {
 				batch.error = std::current_exception();
 			}
@@ -229,21 +230,21 @@ void JevEvalJsonFunction(DataChunk &args, ExpressionState &state, Vector &result
 	std::exception_ptr first_error;
 	for (auto &batch : batches) {
 		if (batch.error) {
-			jev_state->RecordFailedBatch();
+			jev_state->RecordFailedBatch(batch.attempts.api_ms, batch.attempts.retries);
 			if (!first_error) {
 				first_error = batch.error;
 			}
 			continue;
 		}
 		jev_state->RecordBatch(NumericCast<int64_t>(batch.count), batch.response.usage.input_tokens,
-		                       batch.response.usage.output_tokens, batch.response.api_ms, batch.response.retries);
+		                       batch.response.usage.output_tokens, batch.attempts.api_ms, batch.attempts.retries);
 		if (config.notices) {
 			std::cerr << StringUtil::Format(
 			                 "jev: %llu row%s, 1 request, %lld input + %lld output tokens, $%.6f, %lld ms\n",
 			                 batch.count, batch.count == 1 ? "" : "s", batch.response.usage.input_tokens,
 			                 batch.response.usage.output_tokens,
 			                 static_cast<double>(batch.response.usage.input_tokens) * JevState::USD_PER_INPUT_TOKEN,
-			                 batch.response.api_ms)
+			                 batch.attempts.api_ms)
 			          << std::flush;
 		}
 		auto &group = groups[batch.group];

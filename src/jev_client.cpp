@@ -240,7 +240,7 @@ JevConfig JevGetConfig(ClientContext &context) {
 }
 
 JevResponse JevPostBatch(const JevConfig &config, const string &question, const string &kind,
-                         const vector<string> &options, const vector<string> &rows) {
+                         const vector<string> &options, const vector<string> &rows, JevAttempts &attempts) {
 	auto request_body = BuildRequestBody(config, question, kind, options, rows);
 
 	string base, path;
@@ -262,16 +262,16 @@ JevResponse JevPostBatch(const JevConfig &config, const string &question, const 
 
 	string last_error;
 	auto backoff_ms = FIRST_BACKOFF_MS;
-	//! Only the round trips count towards api_ms - the sleeps in between do not.
-	int64_t api_ms = 0;
 	int64_t sleep_ms = 0;
 	for (idx_t attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
 		if (attempt > 0) {
 			std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
 		}
+		attempts.retries = NumericCast<int64_t>(attempt);
 		auto started = std::chrono::steady_clock::now();
 		auto res = client.Post(path.c_str(), headers, request_body, "application/json");
-		api_ms += NumericCast<int64_t>(
+		// Only the round trips count towards api_ms - the sleeps in between do not.
+		attempts.api_ms += NumericCast<int64_t>(
 		    std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count());
 		sleep_ms = backoff_ms;
 		backoff_ms = MinValue<int64_t>(backoff_ms * 2, MAX_BACKOFF_MS);
@@ -283,8 +283,6 @@ JevResponse JevPostBatch(const JevConfig &config, const string &question, const 
 		if (res->status == 200) {
 			JevResponse response;
 			ParseResponse(res->body, rows.size(), response);
-			response.api_ms = api_ms;
-			response.retries = NumericCast<int64_t>(attempt);
 			return response;
 		}
 		if (!ShouldRetry(res->status)) {
