@@ -126,8 +126,9 @@ SELECT jev_eval(c, 'which continent is this city on?', 'choice', ['africa', 'eur
 
 -- what did that cost?
 SELECT jev_stats();
--- {"requests":4,"retries":0,"rows_evaluated":25,"cache_hits":16,"input_tokens":3093,
---  "output_tokens":670,"estimated_cost_usd":0.00013,"api_ms":2120,"errors":0,"cache_entries":25}
+-- {"requests":4,"retries":0,"batches":4,"rows_evaluated":25,"cache_hits":16,
+--  "input_tokens":3093,"output_tokens":670,"estimated_cost_usd":0.000129906,
+--  "api_ms":2120,"errors":0,"cache_entries":25}
 ```
 
 Probabilities depend on the whole table sent in each request (the rows are the model's

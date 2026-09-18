@@ -5,14 +5,9 @@
 set -euo pipefail
 
 PROJ_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# One source of truth for the port: test/mock_api.py.
-DEFAULT_PORT="$(python3 -c "import sys; sys.path.insert(0, '${PROJ_DIR}/test'); import mock_api; print(mock_api.DEFAULT_PORT)")"
-PORT="${JEV_MOCK_PORT:-${DEFAULT_PORT}}"
-
-if ! grep -q "127.0.0.1:${PORT}/v1/systemone" "${PROJ_DIR}/test/sql/jev.test"; then
-	echo "test/run.sh: test/sql/jev.test does not point at 127.0.0.1:${PORT}" >&2
-	exit 1
-fi
+# One source of truth for the port: test/mock_api.py, which is also the URL test/sql/jev.test
+# sets. The port is not configurable here because the .test file cannot read an env var.
+PORT="$(python3 -c "import sys; sys.path.insert(0, '${PROJ_DIR}/test'); import mock_api; print(mock_api.DEFAULT_PORT)")"
 
 # The tests are skipped unless this says the mock is up (test/sql/jev.test requires it),
 # and the "no API key" case asserts that nothing is configured anywhere.

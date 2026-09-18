@@ -131,7 +131,7 @@ description.yml                                          community-extensions me
 docs/DESIGN.md, README.md, CHANGELOG.md, LICENSE (MIT)
 ```
 
-CI: template's `MainDistributionPipeline.yml` (DuckDB v1.5.4, all platforms)
+CI: template's `MainDistributionPipeline.yml` (DuckDB v1.5.5, all platforms)
 plus a mock-server step before tests.
 
 ## Out of scope (follow-ups)
