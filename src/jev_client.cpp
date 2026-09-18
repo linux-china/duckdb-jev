@@ -232,7 +232,8 @@ JevResponse JevPostBatch(const JevConfig &config, const string &question, const 
 
 	duckdb_httplib_openssl::Headers headers = {
 	    {"Authorization", "Bearer " + config.api_key},
-	    {"Content-Type", "application/json"},
+	    // Content-Type is passed to Post() below; listing it here too would send the
+	    // header twice, which api.typesafe.ai rejects with a 422 (body read as a string).
 	    {"User-Agent", string("duck-jev/") + JevVersion()},
 	};
 

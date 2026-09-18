@@ -91,6 +91,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(401, {"error": "invalid api key"})
             return
 
+        content_types = self.headers.get_all("Content-Type") or []
+        if content_types != ["application/json"]:
+            self.send_json(422, {"error": f"content-type must be exactly one application/json, got {content_types}"})
+            return
         length = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(length).decode("utf-8")
         try:
