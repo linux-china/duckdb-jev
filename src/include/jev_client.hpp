@@ -13,12 +13,15 @@
 
 namespace duckdb {
 
+//! Upper bound on jev_concurrency. Every DuckDB thread evaluating the function opens its
+//! own set of connections, so the real fan-out is DuckDB threads x jev_concurrency.
+static constexpr idx_t JEV_MAX_CONCURRENCY = 64;
+
 //! Extension settings, resolved once per call from the client context.
 struct JevConfig {
 	string api_key;
 	string api_url;
 	string model;
-	double threshold = 0.5;
 	idx_t batch_size = 40;
 	idx_t concurrency = 6;
 	idx_t timeout = 90;
@@ -34,7 +37,10 @@ struct JevResponse {
 	//! One JSON answer object per row of the request, in request order.
 	vector<string> answers;
 	JevUsage usage;
+	//! Time spent in HTTP round trips, excluding the backoff sleeps between them.
 	int64_t api_ms = 0;
+	//! Attempts that had to be repeated before this response arrived.
+	int64_t retries = 0;
 };
 
 //! Reads jev_* settings; the API key falls back to the TYPESAFE_API_KEY environment variable.

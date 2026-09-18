@@ -11,6 +11,7 @@
 
 #include <chrono>
 #include <cstdlib>
+#include <stdexcept>
 #include <thread>
 
 namespace duckdb {
@@ -23,6 +24,8 @@ namespace {
 constexpr idx_t MAX_ATTEMPTS = 6;
 constexpr int64_t FIRST_BACKOFF_MS = 500;
 constexpr int64_t MAX_BACKOFF_MS = 8000;
+//! Upper bound on a Retry-After the server asks for.
+constexpr int64_t MAX_RETRY_AFTER_SECONDS = 30;
 
 string GetStringSetting(ClientContext &context, const char *name, const string &fallback) {
 	Value value;
@@ -33,13 +36,16 @@ string GetStringSetting(ClientContext &context, const char *name, const string &
 	return result.empty() ? fallback : result;
 }
 
-idx_t GetIdxSetting(ClientContext &context, const char *name, idx_t fallback) {
+idx_t GetIdxSetting(ClientContext &context, const char *name, idx_t fallback, idx_t maximum) {
 	Value value;
 	if (!context.TryGetCurrentSetting(name, value) || value.IsNull()) {
 		return fallback;
 	}
 	auto result = value.GetValue<int64_t>();
-	return result <= 0 ? fallback : NumericCast<idx_t>(result);
+	if (result <= 0) {
+		throw InvalidInputException("jev: %s must be >= 1", name);
+	}
+	return MinValue<idx_t>(NumericCast<idx_t>(result), maximum);
 }
 
 //! Splits "https://host:port/path" into the part httplib's Client takes and the request path.
@@ -65,6 +71,27 @@ void SplitUrl(const string &url, string &base, string &path) {
 
 bool ShouldRetry(int status) {
 	return status == 429 || status == 529 || status >= 500;
+}
+
+//! Retry-After in whole seconds, capped; 0 when the header is absent or unusable
+//! (the HTTP-date form is not supported). Only 429 and 503 carry it in practice.
+int64_t RetryAfterMs(const duckdb_httplib_openssl::Response &res) {
+	if (res.status != 429 && res.status != 503) {
+		return 0;
+	}
+	auto header = res.get_header_value("Retry-After");
+	if (header.empty()) {
+		return 0;
+	}
+	try {
+		auto seconds = std::stoll(header);
+		if (seconds <= 0) {
+			return 0;
+		}
+		return MinValue<int64_t>(seconds, MAX_RETRY_AFTER_SECONDS) * 1000;
+	} catch (std::exception &) {
+		return 0;
+	}
 }
 
 string Truncate(const string &body, idx_t limit) {
@@ -201,14 +228,10 @@ JevConfig JevGetConfig(ClientContext &context) {
 	}
 	config.api_url = GetStringSetting(context, "jev_api_url", "https://api.typesafe.ai/v1/systemone");
 	config.model = GetStringSetting(context, "jev_model", "jev-latest");
-	config.batch_size = GetIdxSetting(context, "jev_batch_size", 40);
-	config.concurrency = GetIdxSetting(context, "jev_concurrency", 6);
-	config.timeout = GetIdxSetting(context, "jev_timeout", 90);
+	config.batch_size = GetIdxSetting(context, "jev_batch_size", 40, NumericLimits<idx_t>::Maximum());
+	config.concurrency = GetIdxSetting(context, "jev_concurrency", 6, JEV_MAX_CONCURRENCY);
+	config.timeout = GetIdxSetting(context, "jev_timeout", 90, NumericLimits<idx_t>::Maximum());
 
-	Value threshold;
-	if (context.TryGetCurrentSetting("jev_threshold", threshold) && !threshold.IsNull()) {
-		config.threshold = threshold.GetValue<double>();
-	}
 	Value notices;
 	if (context.TryGetCurrentSetting("jev_notices", notices) && !notices.IsNull()) {
 		config.notices = notices.GetValue<bool>();
@@ -239,13 +262,19 @@ JevResponse JevPostBatch(const JevConfig &config, const string &question, const 
 
 	string last_error;
 	auto backoff_ms = FIRST_BACKOFF_MS;
-	auto started = std::chrono::steady_clock::now();
+	//! Only the round trips count towards api_ms - the sleeps in between do not.
+	int64_t api_ms = 0;
+	int64_t sleep_ms = 0;
 	for (idx_t attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
 		if (attempt > 0) {
-			std::this_thread::sleep_for(std::chrono::milliseconds(backoff_ms));
-			backoff_ms = MinValue<int64_t>(backoff_ms * 2, MAX_BACKOFF_MS);
+			std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
 		}
+		auto started = std::chrono::steady_clock::now();
 		auto res = client.Post(path.c_str(), headers, request_body, "application/json");
+		api_ms += NumericCast<int64_t>(
+		    std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count());
+		sleep_ms = backoff_ms;
+		backoff_ms = MinValue<int64_t>(backoff_ms * 2, MAX_BACKOFF_MS);
 		if (!res) {
 			last_error = StringUtil::Format("transport error (%s) contacting %s",
 			                                duckdb_httplib_openssl::to_string(res.error()), config.api_url);
@@ -254,13 +283,17 @@ JevResponse JevPostBatch(const JevConfig &config, const string &question, const 
 		if (res->status == 200) {
 			JevResponse response;
 			ParseResponse(res->body, rows.size(), response);
-			response.api_ms = NumericCast<int64_t>(
-			    std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started)
-			        .count());
+			response.api_ms = api_ms;
+			response.retries = NumericCast<int64_t>(attempt);
 			return response;
 		}
 		if (!ShouldRetry(res->status)) {
 			throw InvalidInputException("jev: TypeSafe API error %d %s", res->status, Truncate(res->body, 300));
+		}
+		// A server that says when to come back wins over our own schedule.
+		auto retry_after = RetryAfterMs(*res);
+		if (retry_after > 0) {
+			sleep_ms = retry_after;
 		}
 		last_error = StringUtil::Format("TypeSafe API error %d %s", res->status, Truncate(res->body, 300));
 	}

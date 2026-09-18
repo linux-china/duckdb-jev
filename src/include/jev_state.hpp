@@ -30,7 +30,10 @@ inline hash_t JevHashRow(const string &row_json) {
 }
 
 struct JevStats {
+	//! Successful responses only - a batch that gave up after its retries counts in errors.
 	int64_t requests = 0;
+	//! Attempts that had to be repeated before a response arrived.
+	int64_t retries = 0;
 	int64_t batches = 0;
 	int64_t rows_evaluated = 0;
 	int64_t cache_hits = 0;
@@ -38,6 +41,13 @@ struct JevStats {
 	int64_t output_tokens = 0;
 	int64_t api_ms = 0;
 	int64_t errors = 0;
+};
+
+//! One cached judgment. The row JSON is kept so a hash collision can be told apart from a
+//! genuine hit - two different rows must never share an answer.
+struct JevCachedAnswer {
+	string row_json;
+	string answer;
 };
 
 //! Judgments are cached per (question, kind, options) - the outer key - and per row hash within it.
@@ -63,25 +73,26 @@ public:
 		return ObjectCache::GetObjectCache(context).GetOrCreate<JevState>(ObjectType());
 	}
 
-	//! Returns the cached answer for a row, or false when it has to be requested.
-	bool TryGetAnswer(const string &cache_key, hash_t row_hash, string &answer) {
+	//! Returns the cached answer for a row, or false when it has to be requested. A hash that
+	//! belongs to a different row is a miss, not a hit.
+	bool TryGetAnswer(const string &cache_key, hash_t row_hash, const string &row_json, string &answer) {
 		lock_guard<mutex> guard(lock);
 		auto entry = cache.find(cache_key);
 		if (entry == cache.end()) {
 			return false;
 		}
 		auto answer_entry = entry->second.find(row_hash);
-		if (answer_entry == entry->second.end()) {
+		if (answer_entry == entry->second.end() || answer_entry->second.row_json != row_json) {
 			return false;
 		}
-		answer = answer_entry->second;
+		answer = answer_entry->second.answer;
 		stats.cache_hits++;
 		return true;
 	}
 
-	void PutAnswer(const string &cache_key, hash_t row_hash, const string &answer) {
+	void PutAnswer(const string &cache_key, hash_t row_hash, const string &row_json, const string &answer) {
 		lock_guard<mutex> guard(lock);
-		cache[cache_key][row_hash] = answer;
+		cache[cache_key][row_hash] = JevCachedAnswer {row_json, answer};
 	}
 
 	void Clear() {
@@ -103,22 +114,28 @@ public:
 		return stats;
 	}
 
-	void RecordBatch(int64_t rows, int64_t input_tokens, int64_t output_tokens, int64_t api_ms, bool failed) {
+	void RecordBatch(int64_t rows, int64_t input_tokens, int64_t output_tokens, int64_t api_ms, int64_t retries) {
 		lock_guard<mutex> guard(lock);
 		stats.batches++;
 		stats.requests++;
+		stats.retries += retries;
 		stats.rows_evaluated += rows;
 		stats.input_tokens += input_tokens;
 		stats.output_tokens += output_tokens;
 		stats.api_ms += api_ms;
-		if (failed) {
-			stats.errors++;
-		}
+	}
+
+	//! A batch that never got an answer: it counts as an attempted batch and an error,
+	//! but not as a request.
+	void RecordFailedBatch() {
+		lock_guard<mutex> guard(lock);
+		stats.batches++;
+		stats.errors++;
 	}
 
 private:
 	mutex lock;
-	unordered_map<string, unordered_map<hash_t, string>> cache;
+	unordered_map<string, unordered_map<hash_t, JevCachedAnswer>> cache;
 	JevStats stats;
 };
 

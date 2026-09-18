@@ -43,7 +43,9 @@ struct JevGroup {
 	vector<hash_t> hashes;
 	//! Result positions each of those rows has to be written to.
 	vector<vector<idx_t>> targets;
-	unordered_map<hash_t, idx_t> row_positions;
+	//! Every entry of `rows` that carries a given hash - normally one, more only when two
+	//! different rows collide, which is why the text is compared before merging them.
+	unordered_map<hash_t, vector<idx_t>> row_positions;
 };
 
 string BuildCacheKey(const string &question, const string &kind, const vector<string> &options) {
@@ -62,10 +64,12 @@ void RunBatches(const JevConfig &config, vector<JevGroup> &groups, vector<JevBat
 	auto run_range = [&](idx_t thread_index) {
 		for (idx_t i = thread_index; i < batches.size(); i += thread_count) {
 			auto &batch = batches[i];
-			auto &group = groups[batch.group];
-			vector<string> rows(group.rows.begin() + NumericCast<int64_t>(batch.offset),
-			                    group.rows.begin() + NumericCast<int64_t>(batch.offset + batch.count));
+			// Everything the worker does has to be inside the guard: an allocation that
+			// throws on a worker thread would otherwise terminate the process.
 			try {
+				auto &group = groups[batch.group];
+				vector<string> rows(group.rows.begin() + NumericCast<int64_t>(batch.offset),
+				                    group.rows.begin() + NumericCast<int64_t>(batch.offset + batch.count));
 				batch.response = JevPostBatch(config, group.question, group.kind, group.options, rows);
 			} catch (...) {
 				batch.error = std::current_exception();
@@ -78,8 +82,17 @@ void RunBatches(const JevConfig &config, vector<JevGroup> &groups, vector<JevBat
 	}
 	vector<std::thread> threads;
 	threads.reserve(thread_count);
-	for (idx_t i = 0; i < thread_count; i++) {
-		threads.emplace_back(run_range, i);
+	try {
+		for (idx_t i = 0; i < thread_count; i++) {
+			threads.emplace_back(run_range, i);
+		}
+	} catch (...) {
+		// A thread we could not start must not leave the ones we did start unjoined -
+		// they write into batches, which lives on this frame.
+		for (auto &thread : threads) {
+			thread.join();
+		}
+		throw;
 	}
 	for (auto &thread : threads) {
 		thread.join();
@@ -118,6 +131,7 @@ void JevEvalJsonFunction(DataChunk &args, ExpressionState &state, Vector &result
 	for (idx_t i = 0; i < count; i++) {
 		auto row_index = rows_format.sel->get_index(i);
 		if (!rows_format.validity.RowIsValid(row_index)) {
+			result_data[i] = string_t();
 			result_validity.SetInvalid(i);
 			continue;
 		}
@@ -155,7 +169,7 @@ void JevEvalJsonFunction(DataChunk &args, ExpressionState &state, Vector &result
 		auto row_hash = JevHashRow(row_json);
 
 		string answer;
-		if (jev_state->TryGetAnswer(cache_key, row_hash, answer)) {
+		if (jev_state->TryGetAnswer(cache_key, row_hash, row_json, answer)) {
 			result_data[i] = StringVector::AddString(result, answer);
 			continue;
 		}
@@ -172,15 +186,22 @@ void JevEvalJsonFunction(DataChunk &args, ExpressionState &state, Vector &result
 			groups.push_back(std::move(group));
 		}
 		auto &group = groups[group_entry->second];
-		auto row_entry = group.row_positions.find(row_hash);
-		if (row_entry == group.row_positions.end()) {
-			group.row_positions[row_hash] = group.rows.size();
+		auto &positions = group.row_positions[row_hash];
+		optional_idx existing;
+		for (auto position : positions) {
+			if (group.rows[position] == row_json) {
+				existing = position;
+				break;
+			}
+		}
+		if (existing.IsValid()) {
+			group.targets[existing.GetIndex()].push_back(i);
+		} else {
+			positions.push_back(group.rows.size());
 			group.rows.push_back(row_json);
 			group.hashes.push_back(row_hash);
 			group.targets.emplace_back();
 			group.targets.back().push_back(i);
-		} else {
-			group.targets[row_entry->second].push_back(i);
 		}
 	}
 
@@ -208,18 +229,19 @@ void JevEvalJsonFunction(DataChunk &args, ExpressionState &state, Vector &result
 	std::exception_ptr first_error;
 	for (auto &batch : batches) {
 		if (batch.error) {
-			jev_state->RecordBatch(0, 0, 0, 0, true);
+			jev_state->RecordFailedBatch();
 			if (!first_error) {
 				first_error = batch.error;
 			}
 			continue;
 		}
 		jev_state->RecordBatch(NumericCast<int64_t>(batch.count), batch.response.usage.input_tokens,
-		                       batch.response.usage.output_tokens, batch.response.api_ms, false);
+		                       batch.response.usage.output_tokens, batch.response.api_ms, batch.response.retries);
 		if (config.notices) {
 			std::cerr << StringUtil::Format(
-			                 "jev: %llu rows, 1 request, %lld input + %lld output tokens, $%.6f, %lld ms\n",
-			                 batch.count, batch.response.usage.input_tokens, batch.response.usage.output_tokens,
+			                 "jev: %llu row%s, 1 request, %lld input + %lld output tokens, $%.6f, %lld ms\n",
+			                 batch.count, batch.count == 1 ? "" : "s", batch.response.usage.input_tokens,
+			                 batch.response.usage.output_tokens,
 			                 static_cast<double>(batch.response.usage.input_tokens) * JevState::USD_PER_INPUT_TOKEN,
 			                 batch.response.api_ms)
 			          << std::flush;
@@ -228,7 +250,7 @@ void JevEvalJsonFunction(DataChunk &args, ExpressionState &state, Vector &result
 		for (idx_t r = 0; r < batch.count; r++) {
 			auto &answer = batch.response.answers[r];
 			auto row = batch.offset + r;
-			jev_state->PutAnswer(group.cache_key, group.hashes[row], answer);
+			jev_state->PutAnswer(group.cache_key, group.hashes[row], group.rows[row], answer);
 			for (auto target : group.targets[row]) {
 				result_data[target] = StringVector::AddString(result, answer);
 			}
@@ -243,11 +265,12 @@ void JevStatsFunction(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto jev_state = JevState::Get(state.GetContext());
 	auto stats = jev_state->CopyStats();
 	auto json = StringUtil::Format(
-	    "{\"requests\":%lld,\"batches\":%lld,\"rows_evaluated\":%lld,\"cache_hits\":%lld,\"input_tokens\":%lld,"
-	    "\"output_tokens\":%lld,\"estimated_cost_usd\":%.9f,\"api_ms\":%lld,\"errors\":%lld,\"cache_entries\":%llu}",
-	    stats.requests, stats.batches, stats.rows_evaluated, stats.cache_hits, stats.input_tokens, stats.output_tokens,
-	    static_cast<double>(stats.input_tokens) * JevState::USD_PER_INPUT_TOKEN, stats.api_ms, stats.errors,
-	    jev_state->CacheEntries());
+	    "{\"requests\":%lld,\"retries\":%lld,\"batches\":%lld,\"rows_evaluated\":%lld,\"cache_hits\":%lld,"
+	    "\"input_tokens\":%lld,\"output_tokens\":%lld,\"estimated_cost_usd\":%.9f,\"api_ms\":%lld,"
+	    "\"errors\":%lld,\"cache_entries\":%llu}",
+	    stats.requests, stats.retries, stats.batches, stats.rows_evaluated, stats.cache_hits, stats.input_tokens,
+	    stats.output_tokens, static_cast<double>(stats.input_tokens) * JevState::USD_PER_INPUT_TOKEN, stats.api_ms,
+	    stats.errors, jev_state->CacheEntries());
 	result.SetVectorType(VectorType::CONSTANT_VECTOR);
 	ConstantVector::GetData<string_t>(result)[0] = StringVector::AddString(result, json);
 }
@@ -309,6 +332,7 @@ const DefaultMacro JEV_MACROS[] = {
      "json_extract(jev_eval_json(to_json(rec)::VARCHAR, question, kind, options), '$.confidence')::DOUBLE"},
     {DEFAULT_SCHEMA, "jev_eval", {"rec", "question", "kind", "options", nullptr}, {{nullptr, nullptr}},
      "jev_eval_json(to_json(rec)::VARCHAR, question, kind, options)::JSON"},
+    {DEFAULT_SCHEMA, "jev_stats", {nullptr}, {{nullptr, nullptr}}, "jev_stats_json()::JSON"},
 };
 // clang-format on
 
@@ -350,7 +374,7 @@ void LoadInternal(ExtensionLoader &loader) {
 	eval_json.null_handling = FunctionNullHandling::SPECIAL_HANDLING;
 	loader.RegisterFunction(eval_json);
 
-	ScalarFunction stats("jev_stats", {}, LogicalType::VARCHAR, JevStatsFunction);
+	ScalarFunction stats("jev_stats_json", {}, LogicalType::VARCHAR, JevStatsFunction);
 	stats.stability = FunctionStability::VOLATILE;
 	loader.RegisterFunction(stats);
 
