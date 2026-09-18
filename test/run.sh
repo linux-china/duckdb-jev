@@ -14,9 +14,13 @@ python3 "${PROJ_DIR}/test/mock_api.py" "${PORT}" &
 MOCK_PID=$!
 trap 'kill "${MOCK_PID}" 2>/dev/null || true' EXIT
 
-for _ in $(seq 1 50); do
+for attempt in $(seq 1 50); do
 	if curl -fsS "http://127.0.0.1:${PORT}/" >/dev/null 2>&1; then
 		break
+	fi
+	if [ "${attempt}" -eq 50 ]; then
+		echo "test/run.sh: nothing answering on 127.0.0.1:${PORT}" >&2
+		exit 1
 	fi
 	sleep 0.1
 done
