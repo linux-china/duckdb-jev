@@ -1,0 +1,58 @@
+extension:
+  name: jev
+  description: Filter, rank and classify rows with plain English, judged by TypeSafe's Jev model
+  version: 0.1.0
+  language: C++
+  build: cmake
+  license: MIT
+  excluded_platforms: "wasm_mvp;wasm_eh;wasm_threads"
+  requires_toolchains: ""
+  maintainers:
+    - mberg
+
+repo:
+  github: recodelabs/duck-jev
+  ref: main
+
+docs:
+  hello_world: |
+    SET jev_api_key = 'your-key';   -- or export TYPESAFE_API_KEY
+
+    CREATE TABLE people AS SELECT * FROM (VALUES ('Amélie Laurent'), ('John Smith')) t(name);
+
+    -- a plain boolean predicate, so it composes with AND, joins and GROUP BY
+    SELECT * FROM people p WHERE jev(p, 'the name is French');
+
+    -- the calibrated probability behind it
+    SELECT name, jev_prob(p, 'the name is French') AS p FROM people p ORDER BY p DESC;
+  extended_description: |
+    `jev` judges rows with plain English. Every row is sent to
+    [TypeSafe's Jev](https://docs.typesafe.ai), a System One model that returns a
+    calibrated probability instead of generated text - no index, no embeddings, no
+    vector column.
+
+    | Function | Returns | Notes |
+    |---|---|---|
+    | `jev(rec, condition [, threshold])` | BOOLEAN | `jev_prob(...) >= coalesce(threshold, jev_threshold)` |
+    | `jev_prob(rec, condition)` | DOUBLE | P(row satisfies condition), 0..1 |
+    | `jev_score(rec, question, levels)` | DOUBLE | probability-weighted level index, 0..n-1 |
+    | `jev_score_norm(rec, question, levels)` | DOUBLE | the same, rescaled to 0..1 |
+    | `jev_choice(rec, question, options)` | VARCHAR | most likely option |
+    | `jev_confidence(rec, question, kind, options)` | DOUBLE | confidence of a score or choice answer |
+    | `jev_eval(rec, question, kind, options)` | JSON | the raw answer object |
+    | `jev_stats()` | JSON | requests, tokens, estimated cost, cache hits |
+    | `jev_cache_clear()` | BOOLEAN | forget cached judgments |
+    | `jev_version()` | VARCHAR | extension version |
+
+    `rec` is any struct: a table alias, a subquery alias or `struct_pack(...)`.
+    Rows are batched (`jev_batch_size`) and requested in parallel
+    (`jev_concurrency`); identical rows are judged once per question and cached for
+    the lifetime of the database instance.
+
+    Configure it with `SET jev_api_key`, `jev_api_url`, `jev_model`,
+    `jev_threshold`, `jev_batch_size`, `jev_concurrency`, `jev_timeout` and
+    `jev_notices`. The API key falls back to the `TYPESAFE_API_KEY` environment
+    variable.
+
+    The idea comes from [pg-jev](https://github.com/realZachi/pg-jev) for
+    PostgreSQL; this is an independent DuckDB implementation.
