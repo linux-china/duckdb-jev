@@ -1,0 +1,23 @@
+# name: test/sql/jev.test
+# description: test jev extension
+# group: [sql]
+
+# Before we load the extension, this will fail
+statement error
+SELECT jev('Sam');
+----
+Catalog Error: Scalar Function with name jev does not exist!
+
+# Require statement will ensure this test is run with this extension loaded
+require jev
+
+# Confirm the extension works
+query I
+SELECT jev('Sam');
+----
+...........🦆 Sam
+
+query I
+SELECT jev_openssl_version('Michael') ILIKE 'Jev Michael, my linked OpenSSL version is OpenSSL%';
+----
+true
