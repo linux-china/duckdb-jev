@@ -12,13 +12,7 @@ require-env JEV_MOCK_RUNNING 1
 
 # The mock listens on 127.0.0.1:8765 and only accepts the key "test-key".
 statement ok
-SET jev_api_url = 'http://127.0.0.1:8765/v1/systemone';
-
-statement ok
-SET jev_api_key = 'test-key';
-
-statement ok
-SET jev_notices = false;
+create secret(type jev, api_url 'http://127.0.0.1:8765/v1/systemone', api_key 'test-key');
 
 statement ok
 CREATE TABLE cities(id INTEGER, name VARCHAR, country VARCHAR);
@@ -227,29 +221,15 @@ SELECT jev_prob(c, 'this row mentions trigger422') FROM cities c;
 ----
 jev: TypeSafe API error 422
 
-statement ok
-SET jev_api_key = 'not-the-test-key';
-
 statement error
 SELECT jev_prob(c, 'the country is Chile') FROM cities c;
 ----
 jev: TypeSafe API error 401
 
-# no key anywhere is a user error, not an HTTP round trip
-statement ok
-SET jev_api_key = '';
-
 statement error
 SELECT jev_prob(c, 'the country is Bolivia') FROM cities c;
 ----
 jev: no API key
-
-statement ok
-SELECT jev_set_api_key('test-key');
-
-# a URL without a scheme is treated as plain HTTP
-statement ok
-SELECT jev_set_api_url('127.0.0.1:8765/v1/systemone');
 
 query I
 SELECT jev_prob(c, 'the country is Japan') FROM cities c WHERE id = 3;
