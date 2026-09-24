@@ -7,7 +7,7 @@ probabilities instead of generated text. No index, no embeddings, no vector colu
 ```sql
 INSTALL jev FROM community;
 LOAD jev;
-create secret(type jev, api_key = 'your-key');   -- or export TYPESAFE_API_KEY
+create secret(type jev, API_KEY 'your-key');   -- or export TYPESAFE_API_KEY
 
 SELECT * FROM people p WHERE jev(p, 'the name is European');
 SELECT subject, jev_prob(t, 'the customer is angry') AS p FROM tickets t ORDER BY p DESC LIMIT 20;
@@ -64,7 +64,7 @@ The extension is built against DuckDB **1.5.5**; use the matching DuckDB version
 Get an API key from https://console.typesafe.ai and give it to the session:
 
 ```sql
-create secret(type jev, api_key = 'your-key');      -- or: export TYPESAFE_API_KEY=your-key before starting DuckDB
+create secret(type jev, API_KEY 'your-key');      -- or: export TYPESAFE_API_KEY=your-key before starting DuckDB
 ```
 
 Then ask questions about rows. `rec` is the table alias, so every column is visible to the model:
