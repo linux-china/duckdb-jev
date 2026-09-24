@@ -16,7 +16,7 @@ repo:
 
 docs:
   hello_world: |
-    SET jev_api_key = 'your-key';   -- or export TYPESAFE_API_KEY
+    create secret(type jev, API_KEY 'your-key');   -- or export TYPESAFE_API_KEY
 
     CREATE TABLE people AS SELECT * FROM (VALUES ('Amélie Laurent'), ('John Smith')) t(name);
 
@@ -49,8 +49,7 @@ docs:
     (`jev_concurrency`); identical rows are judged once per question and cached for
     the lifetime of the database instance.
 
-    Configure it with `SET jev_api_key`, `jev_api_url`, `jev_model`,
-    `jev_threshold`, `jev_batch_size`, `jev_concurrency`, `jev_timeout` and
+    Configure it with `SET jev_threshold`, `jev_batch_size`, `jev_concurrency`, `jev_timeout` and
     `jev_notices`. The API key falls back to the `TYPESAFE_API_KEY` environment
     variable.
 
