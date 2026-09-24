@@ -4,6 +4,7 @@
 
 #include "jev_client.hpp"
 #include "jev_state.hpp"
+#include "jev_secret.hpp"
 
 #include "duckdb.hpp"
 #include "duckdb/catalog/default/default_functions.hpp"
@@ -345,12 +346,14 @@ void RegisterMacro(ExtensionLoader &loader, idx_t start, idx_t overloads) {
 
 void RegisterOptions(ExtensionLoader &loader) {
 	auto &config = DBConfig::GetConfig(loader.GetDatabaseInstance());
+	/*
 	config.AddExtensionOption("jev_api_key",
 	                          "TypeSafe API key; falls back to the TYPESAFE_API_KEY environment variable",
 	                          LogicalType::VARCHAR, Value(""));
 	config.AddExtensionOption("jev_api_url", "TypeSafe System One endpoint", LogicalType::VARCHAR,
 	                          Value("https://api.typesafe.ai/v1/systemone"));
 	config.AddExtensionOption("jev_model", "TypeSafe model name", LogicalType::VARCHAR, Value("jev-latest"));
+	*/
 	config.AddExtensionOption("jev_threshold", "Probability at which jev() is true", LogicalType::DOUBLE,
 	                          Value::DOUBLE(0.5));
 	config.AddExtensionOption("jev_batch_size", "Rows per API request", LogicalType::UBIGINT, Value::UBIGINT(40));
@@ -365,6 +368,8 @@ void RegisterOptions(ExtensionLoader &loader) {
 void LoadInternal(ExtensionLoader &loader) {
 	loader.SetDescription("Filter, rank and classify rows with plain English, judged by TypeSafe's Jev model");
 	RegisterOptions(loader);
+	// register secret with jev type
+	RegisterJevSecret(loader);
 
 	// The one vectorized function every macro goes through.
 	ScalarFunction eval_json(
@@ -385,6 +390,7 @@ void LoadInternal(ExtensionLoader &loader) {
 
 	loader.RegisterFunction(ScalarFunction("jev_version", {}, LogicalType::VARCHAR, JevVersionFunction));
 
+	/*
 	ScalarFunction set_api_key("jev_set_api_key", {LogicalType::VARCHAR}, LogicalType::VARCHAR, JevSetApiKeyFunction);
 	set_api_key.stability = FunctionStability::VOLATILE;
 	loader.RegisterFunction(set_api_key);
@@ -394,6 +400,7 @@ void LoadInternal(ExtensionLoader &loader) {
 	ScalarFunction set_model("jev_set_model", {LogicalType::VARCHAR}, LogicalType::VARCHAR, JevSetModelFunction);
 	set_model.stability = FunctionStability::VOLATILE;
 	loader.RegisterFunction(set_model);
+	*/
 
 	// jev() has two overloads and has to be registered as one macro entry.
 	RegisterMacro(loader, 0, 2);

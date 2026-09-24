@@ -9,6 +9,8 @@
 
 #include "yyjson.hpp"
 
+#include "jev_secret.hpp"
+
 #include <chrono>
 #include <cstdlib>
 #include <stdexcept>
@@ -125,10 +127,10 @@ string CurrentTimestamp() {
 	auto offset = static_cast<int64_t>(seconds) - static_cast<int64_t>(std::mktime(&utc_as_local));
 	auto offset_seconds = offset < 0 ? -offset : offset;
 
-	auto stamp = StringUtil::Format("%04d-%02d-%02d %02d:%02d:%02d.%06d%c%02d", local.tm_year + 1900,
-	                                local.tm_mon + 1, local.tm_mday, local.tm_hour, local.tm_min, local.tm_sec,
-	                                NumericCast<int>(micros % 1000000), offset < 0 ? '-' : '+',
-	                                NumericCast<int>(offset_seconds / 3600));
+	auto stamp =
+	    StringUtil::Format("%04d-%02d-%02d %02d:%02d:%02d.%06d%c%02d", local.tm_year + 1900, local.tm_mon + 1,
+	                       local.tm_mday, local.tm_hour, local.tm_min, local.tm_sec, NumericCast<int>(micros % 1000000),
+	                       offset < 0 ? '-' : '+', NumericCast<int>(offset_seconds / 3600));
 	auto minutes = NumericCast<int>((offset_seconds % 3600) / 60);
 	if (minutes != 0) {
 		stamp += StringUtil::Format(":%02d", minutes);
@@ -258,16 +260,22 @@ const char *JevVersion() {
 
 JevConfig JevGetConfig(ClientContext &context) {
 	JevConfig config;
-	// todo fill config from DuckDB secret `CREATE SECRET my_secret ( */ TYPE jev, jev_api_url 'https://api.typesafe.ai/v1/systemone', jev_api_url 'api_key', jev_model 'jev-latest' );`
-	config.api_key = GetStringSetting(context, "jev_api_key", "");
-	if (config.api_key.empty()) {
-		auto from_env = std::getenv("TYPESAFE_API_KEY");
-		if (from_env) {
-			config.api_key = from_env;
-		}
+	auto api_key_from_env = std::getenv("TYPESAFE_API_KEY");
+	// read API KEY from environment
+	if (api_key_from_env) {
+		config.api_key = api_key_from_env;
+	} else {
+		JevSecret jev_settings = ResolveJevSecret(context);
+		config.api_key = jev_settings.api_key;
+		config.api_url = jev_settings.api_url;
+		config.model = jev_settings.model;
 	}
-	config.api_url = GetStringSetting(context, "jev_api_url", "https://api.typesafe.ai/v1/systemone");
-	config.model = GetStringSetting(context, "jev_model", "jev-latest");
+	if (config.api_url.empty()) {
+		config.api_url = "https://api.typesafe.ai/v1/systemone";
+	}
+	if (config.model.empty()) {
+		config.model = "jev-latest";
+	}
 	config.batch_size = GetIdxSetting(context, "jev_batch_size", 40, NumericLimits<idx_t>::Maximum());
 	config.concurrency = GetIdxSetting(context, "jev_concurrency", 6, JEV_MAX_CONCURRENCY);
 	config.timeout = GetIdxSetting(context, "jev_timeout", 90, NumericLimits<idx_t>::Maximum());
@@ -282,9 +290,11 @@ JevConfig JevGetConfig(ClientContext &context) {
 JevResponse JevPostBatch(const JevConfig &config, const string &question, const string &kind,
                          const vector<string> &options, const vector<string> &rows, JevAttempts &attempts) {
 	auto request_body = BuildRequestBody(config, question, kind, options, rows);
+	/*
 	if (config.notices) {
-		//std::cerr << "jev: request body: " << request_body << std::endl;
+		std::cerr << "jev: request body: " << request_body << std::endl;
 	}
+	*/
 
 	string base, path;
 	SplitUrl(config.api_url, base, path);
