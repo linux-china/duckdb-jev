@@ -265,10 +265,10 @@ JevConfig JevGetConfig(ClientContext &context) {
 	if (api_key_from_env) {
 		config.api_key = api_key_from_env;
 	} else {
-		JevSecret jev_settings = ResolveJevSecret(context);
-		config.api_key = jev_settings.api_key;
-		config.api_url = jev_settings.api_url;
-		config.model = jev_settings.model;
+		JevSecret jev_secret = ResolveJevSecret(context);
+		config.api_key = jev_secret.api_key;
+		config.api_url = jev_secret.api_url;
+		config.model = jev_secret.model;
 	}
 	if (config.api_url.empty()) {
 		config.api_url = "https://api.typesafe.ai/v1/systemone";
@@ -303,7 +303,7 @@ JevResponse JevPostBatch(const JevConfig &config, const string &question, const 
 	client.set_read_timeout(NumericCast<time_t>(config.timeout), 0);
 	client.set_write_timeout(NumericCast<time_t>(config.timeout), 0);
 	client.set_connection_timeout(NumericCast<time_t>(config.timeout), 0);
-	client.set_follow_location(true);
+	client.set_follow_location(false);
 	client.set_keep_alive(true);
 
 	duckdb_httplib_openssl::Headers headers = {

@@ -1,7 +1,7 @@
 extension:
   name: jev
   description: Filter, rank and classify rows with plain English, judged by TypeSafe's Jev model
-  version: 0.1.0
+  version: 0.1.1
   language: C++
   build: cmake
   license: MIT

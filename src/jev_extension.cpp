@@ -210,9 +210,6 @@ void JevEvalJsonFunction(DataChunk &args, ExpressionState &state, Vector &result
 	if (groups.empty()) {
 		return;
 	}
-	if (config.api_key.empty()) {
-		throw InvalidInputException("jev: no API key. SET jev_api_key = '...' or export TYPESAFE_API_KEY.");
-	}
 
 	vector<JevBatch> batches;
 	auto batch_size = MaxValue<idx_t>(config.batch_size, 1);

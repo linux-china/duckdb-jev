@@ -243,7 +243,7 @@ it), so a bare `make test` on a machine without the mock skips them instead of f
 
 ## Status
 
-Version 0.1.0. Builds and tests are green on Linux, macOS and Windows; submission to the
+Version 0.1.1. Builds and tests are green on Linux, macOS and Windows; submission to the
 [DuckDB community extension repository](https://github.com/duckdb/community-extensions)
 is pending, so for now install from a build (see [Install](#install)).
 

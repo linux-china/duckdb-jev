@@ -2,7 +2,7 @@
 
 ## 0.1.1
 
-* Add jev secret type: `create secret (type jev, API_URL "[xxxx](https://api.typesafe.ai/v1/systemone)", API_KEY "xxx", MODEL  "jev-latest" );`
+* Add jev secret type: `create secret (type jev, API_URL "https://api.typesafe.ai/v1/systemone", API_KEY "xxx", MODEL "jev-latest" );`
 * Remove `jev_api_key`, `jev_api_url`, `jev_set_api_key()`, `jev_set_api_url()`, and use jev secret instead.
 * Every request's `state` carries a `timestamp` of when it was built: local
   time with microseconds and the local UTC offset, DuckDB TIMESTAMPTZ style

@@ -221,25 +221,31 @@ SELECT jev_prob(c, 'this row mentions trigger422') FROM cities c;
 ----
 jev: TypeSafe API error 422
 
+# a wrong key in the secret is rejected by the API
+statement ok
+CREATE OR REPLACE SECRET (TYPE jev, API_URL 'http://127.0.0.1:8765/v1/systemone', API_KEY 'not-the-test-key');
+
 statement error
 SELECT jev_prob(c, 'the country is Chile') FROM cities c;
 ----
 jev: TypeSafe API error 401
 
+statement ok
+CREATE OR REPLACE SECRET (TYPE jev, API_URL 'http://127.0.0.1:8765/v1/systemone', API_KEY 'test-key');
+
+# no secret at all is a user error, not an HTTP round trip
+statement ok
+DROP SECRET __default_jev;
+
 statement error
 SELECT jev_prob(c, 'the country is Bolivia') FROM cities c;
 ----
-jev: no API key
+jev: no secret found
+
+statement ok
+CREATE SECRET (TYPE jev, API_URL 'http://127.0.0.1:8765/v1/systemone', API_KEY 'test-key');
 
 query I
 SELECT jev_prob(c, 'the country is Japan') FROM cities c WHERE id = 3;
 ----
 0.9
-
-statement ok
-SELECT jev_set_model('jev-latest');
-
-query I
-SELECT current_setting('jev_model');
-----
-jev-latest

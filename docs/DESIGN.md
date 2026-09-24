@@ -12,7 +12,7 @@ calibrated probabilities rather than generated text:
 
 ```sql
 INSTALL jev FROM community; LOAD jev;
-SET jev_api_key = '...';                           -- or TYPESAFE_API_KEY in the environment
+create secret(type jev, API_KEY 'your-key');     -- or TYPESAFE_API_KEY in the environment
 
 SELECT * FROM people p WHERE jev(p, 'the name is European');
 SELECT subject, jev_prob(t, 'the customer is angry') AS p FROM tickets t ORDER BY p DESC LIMIT 20;
@@ -65,9 +65,6 @@ macros use `rec`.
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `jev_api_key` | env `TYPESAFE_API_KEY` | TypeSafe API key |
-| `jev_api_url` | `https://api.typesafe.ai/v1/systemone` | endpoint (proxies, mock in tests) |
-| `jev_model` | `jev-latest` | model name |
 | `jev_threshold` | `0.5` | probability at which `jev()` is true |
 | `jev_batch_size` | `40` | rows per API request |
 | `jev_concurrency` | `6` | parallel requests per chunk |
@@ -75,8 +72,7 @@ macros use `rec`.
 | `jev_notices` | `true` | print one line per batch run (rows, requests, tokens, est. cost, ms) |
 
 Registered with `config.AddExtensionOption(...)`; read per call through
-`ClientContext`'s config. Also `jev_set_api_key('...')` etc. helper scalars
-mirroring open_prompt, for clients whose SQL layer cannot `SET`.
+`ClientContext`'s config.
 
 ## Evaluation (per vector chunk)
 
