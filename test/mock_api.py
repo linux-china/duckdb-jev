@@ -10,6 +10,7 @@ Rules (see docs/DESIGN.md):
 * noul   -> 0.9 when the last word of the condition occurs in the row JSON, else 0.1.
 * score  -> score = len(row_json) % len(criteria), confidence 0.75.
 * choice -> choice = criteria_keys[len(row_json) % len(criteria)], confidence 0.75.
+* ``state.timestamp`` must look like a local timestamp, else 400.
 
 Rows arrive as ``state.rows``; question ``r<i>`` asks about ``rows[i]``.
 
@@ -19,6 +20,7 @@ Usage: python3 test/mock_api.py [port]     (default 8765)
 from __future__ import annotations
 
 import json
+import re
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -26,6 +28,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 API_KEY = "test-key"
 DEFAULT_PORT = 8765
 CONFIDENCE = 0.75
+
+#: What the extension puts in state.timestamp: local time, microseconds, local UTC offset.
+TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6}[+-]\d{2}(:\d{2})?$")
 
 #: How often each "trigger429once" marker has been seen, so the 429 happens exactly once.
 _seen_markers: dict[str, int] = {}
@@ -136,6 +141,11 @@ class Handler(BaseHTTPRequestHandler):
         rows = [row_text(row) for row in state.get("rows", [])]
         condition = state.get("condition", "")
         questions = body.get("questions") or {}
+
+        timestamp = state.get("timestamp") or ""
+        if not TIMESTAMP_RE.match(timestamp):
+            self.send_json(400, {"error": f"bad state.timestamp: {timestamp!r}"})
+            return
 
         answers = {}
         try:

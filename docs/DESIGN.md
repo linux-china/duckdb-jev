@@ -90,8 +90,10 @@ replaces pg-jev's whole-table read-ahead. Per chunk:
    on `jev_concurrency` threads (`std::thread`, join before returning — no
    TaskScheduler dependency).
 3. Request body (TypeSafe System One):
-   `{"model", "state": {"condition": q, "rows": [...]}` (noul) or
-   `{"state": {"rows": [...]}}` (score/choice), `"questions": {"r0": ..., "r1": ...}` —
+   `{"model", "state": {"condition": q, "rows": [...], "timestamp": now}` (noul) or
+   `{"state": {"rows": [...], "timestamp": now}}` (score/choice), `"questions": {"r0": ..., "r1": ...}` —
+   `timestamp` is when the request was built: local time with microseconds and
+   the local UTC offset, DuckDB TIMESTAMPTZ style (`2026-09-24 12:03:47.461842+08`).
    noul: `{"type":"noul","instructions":"Does the record `rows[i]` satisfy the condition stated in `condition`?","criteria":{"true":..,"false":..}}`;
    score: `{"type":"score","instructions":"Rate the record `rows[i]`: <question>","criteria":[levels]}`;
    choice: `{"type":"choice","instructions":"For the record `rows[i]`: <question>","criteria":{option: null}}`.
@@ -113,7 +115,8 @@ database, cleared by `jev_cache_clear()`.
 `test/sql/*.test` (SQLLogicTest, run by `make test`) against a deterministic
 mock server `test/mock_api.py` (our own; rules: noul → 0.9 if the last word of
 the condition appears in the row JSON else 0.1; score/choice → index = length
-of row JSON mod n; `Authorization` must be `Bearer test-key`; a condition
+of row JSON mod n; `Authorization` must be `Bearer test-key`; `state.timestamp`
+must look like a local timestamp else 400; a condition
 containing `trigger422` → HTTP 422). The test runner starts the mock on
 127.0.0.1:8765 before `make test` (`test/run.sh`; CI job step). Cases: version,
 predicate, prob, threshold arg + setting, batch_size → request count,

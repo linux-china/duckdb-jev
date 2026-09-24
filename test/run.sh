@@ -20,7 +20,7 @@ trap 'kill "${MOCK_PID}" 2>/dev/null || true' EXIT
 
 # Probe the real endpoint with a real request - a listener that is not our mock, or a mock
 # that cannot answer, has to fail here rather than half way through the suite.
-probe_body='{"model":"jev-latest","state":{"condition":"probe ok","rows":[{"probe":"ok"}]},"questions":{"r0":{"type":"noul","instructions":"probe"}}}'
+probe_body='{"model":"jev-latest","state":{"condition":"probe ok","rows":[{"probe":"ok"}],"timestamp":"2026-09-24 12:03:47.461842+08"},"questions":{"r0":{"type":"noul","instructions":"probe"}}}'
 for attempt in $(seq 1 50); do
 	if curl -fsS -X POST "http://127.0.0.1:${PORT}/v1/systemone" \
 		-H 'Authorization: Bearer test-key' \

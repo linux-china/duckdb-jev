@@ -98,6 +98,44 @@ string Truncate(const string &body, idx_t limit) {
 	return body.size() <= limit ? body : body.substr(0, limit);
 }
 
+//! Now in the local zone, formatted the way DuckDB prints TIMESTAMPTZ:
+//! "2026-09-24 12:03:47.461842+08" - offset minutes only when the zone is not
+//! a whole number of hours ("+05:30").
+string CurrentTimestamp() {
+	auto since_epoch = std::chrono::system_clock::now().time_since_epoch();
+	auto micros = std::chrono::duration_cast<std::chrono::microseconds>(since_epoch).count();
+	auto seconds = static_cast<std::time_t>(micros / 1000000);
+
+	std::tm local {};
+	std::tm utc {};
+#ifdef DUCKDB_WINDOWS
+	if (localtime_s(&local, &seconds) != 0 || gmtime_s(&utc, &seconds) != 0) {
+		throw InternalException("jev: could not read the clock");
+	}
+#else
+	if (!localtime_r(&seconds, &local) || !gmtime_r(&seconds, &utc)) {
+		throw InternalException("jev: could not read the clock");
+	}
+#endif
+
+	// Offset of the local zone (DST included): mktime re-reads the UTC components
+	// as local wall time, an instant exactly `offset` seconds away from `seconds`.
+	auto utc_as_local = utc;
+	utc_as_local.tm_isdst = -1;
+	auto offset = static_cast<int64_t>(seconds) - static_cast<int64_t>(std::mktime(&utc_as_local));
+	auto offset_seconds = offset < 0 ? -offset : offset;
+
+	auto stamp = StringUtil::Format("%04d-%02d-%02d %02d:%02d:%02d.%06d%c%02d", local.tm_year + 1900,
+	                                local.tm_mon + 1, local.tm_mday, local.tm_hour, local.tm_min, local.tm_sec,
+	                                NumericCast<int>(micros % 1000000), offset < 0 ? '-' : '+',
+	                                NumericCast<int>(offset_seconds / 3600));
+	auto minutes = NumericCast<int>((offset_seconds % 3600) / 60);
+	if (minutes != 0) {
+		stamp += StringUtil::Format(":%02d", minutes);
+	}
+	return stamp;
+}
+
 string BuildRequestBody(const JevConfig &config, const string &question, const string &kind,
                         const vector<string> &options, const vector<string> &rows) {
 	auto doc = yyjson_mut_doc_new(nullptr);
@@ -118,6 +156,7 @@ string BuildRequestBody(const JevConfig &config, const string &question, const s
 		yyjson_mut_arr_append(row_array, yyjson_mut_rawcpy(doc, row.c_str()));
 	}
 	yyjson_mut_obj_add_val(doc, state, "rows", row_array);
+	yyjson_mut_obj_add_strcpy(doc, state, "timestamp", CurrentTimestamp().c_str());
 	yyjson_mut_obj_add_val(doc, root, "state", state);
 
 	auto questions = yyjson_mut_obj(doc);
@@ -219,6 +258,7 @@ const char *JevVersion() {
 
 JevConfig JevGetConfig(ClientContext &context) {
 	JevConfig config;
+	// todo fill config from DuckDB secret `CREATE SECRET my_secret ( */ TYPE jev, jev_api_url 'https://api.typesafe.ai/v1/systemone', jev_api_url 'api_key', jev_model 'jev-latest' );`
 	config.api_key = GetStringSetting(context, "jev_api_key", "");
 	if (config.api_key.empty()) {
 		auto from_env = std::getenv("TYPESAFE_API_KEY");
@@ -242,6 +282,9 @@ JevConfig JevGetConfig(ClientContext &context) {
 JevResponse JevPostBatch(const JevConfig &config, const string &question, const string &kind,
                          const vector<string> &options, const vector<string> &rows, JevAttempts &attempts) {
 	auto request_body = BuildRequestBody(config, question, kind, options, rows);
+	if (config.notices) {
+		//std::cerr << "jev: request body: " << request_body << std::endl;
+	}
 
 	string base, path;
 	SplitUrl(config.api_url, base, path);
