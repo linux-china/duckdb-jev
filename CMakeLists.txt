@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.10)
 
 # Set extension name here
 set(TARGET_NAME jev)
@@ -18,7 +18,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include_directories(src/include duckdb/third_party/httplib duckdb/third_party/yyjson/include)
 
-set(EXTENSION_SOURCES src/jev_extension.cpp src/jev_client.cpp)
+set(EXTENSION_SOURCES src/jev_extension.cpp src/jev_client.cpp src/jev_secret.cpp)
 
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
