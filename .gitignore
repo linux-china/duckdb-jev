@@ -10,3 +10,11 @@ test/python/__pycache__/
 # clangd / clang-tidy scratch
 .cache/
 test/__pycache__/
+
+
+.idea/
+.envrc
+.env
+jev.duckdb
+http-client.private.env.json
+temp/
