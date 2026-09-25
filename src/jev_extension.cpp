@@ -357,7 +357,7 @@ void RegisterOptions(ExtensionLoader &loader) {
 	config.AddExtensionOption("jev_concurrency", "Requests running in parallel per vector", LogicalType::UBIGINT,
 	                          Value::UBIGINT(6));
 	config.AddExtensionOption("jev_timeout", "Seconds allowed per API request", LogicalType::UBIGINT,
-	                          Value::UBIGINT(90));
+	                          Value::UBIGINT(15));
 	config.AddExtensionOption("jev_notices", "Print one line per API request to stderr", LogicalType::BOOLEAN,
 	                          Value::BOOLEAN(true));
 }

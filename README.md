@@ -208,7 +208,7 @@ CREATE SECRET (
 | `jev_threshold`   | `0.5`                                  | probability at which `jev()` is true       |
 | `jev_batch_size`  | `40`                                   | rows per API request (must be >= 1)        |
 | `jev_concurrency` | `6`                                    | parallel requests per vector, capped at 64 |
-| `jev_timeout`     | `90`                                   | seconds per request                        |
+| `jev_timeout`     | `15`                                   | seconds per request                        |
 | `jev_notices`     | `true`                                 | print one line per API request to stderr   |
 
 ## How it works

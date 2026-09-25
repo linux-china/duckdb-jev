@@ -278,7 +278,7 @@ JevConfig JevGetConfig(ClientContext &context) {
 	}
 	config.batch_size = GetIdxSetting(context, "jev_batch_size", 40, NumericLimits<idx_t>::Maximum());
 	config.concurrency = GetIdxSetting(context, "jev_concurrency", 6, JEV_MAX_CONCURRENCY);
-	config.timeout = GetIdxSetting(context, "jev_timeout", 90, NumericLimits<idx_t>::Maximum());
+	config.timeout = GetIdxSetting(context, "jev_timeout", 15, NumericLimits<idx_t>::Maximum());
 
 	Value notices;
 	if (context.TryGetCurrentSetting("jev_notices", notices) && !notices.IsNull()) {
