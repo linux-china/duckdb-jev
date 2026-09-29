@@ -7,6 +7,7 @@
 * Every request's `state` carries a `timestamp` of when it was built: local
   time with microseconds and the local UTC offset, DuckDB TIMESTAMPTZ style
   (`2026-09-24 12:03:47.461842+08`).
+* Built against DuckDB 1.5.6.
 
 ## 0.1.0
 

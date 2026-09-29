@@ -57,7 +57,7 @@ con = duckdb.connect(config={"allow_unsigned_extensions": "true"})
 con.execute("LOAD '/path/to/jev.duckdb_extension'")
 ```
 
-The extension is built against DuckDB **1.5.5**; use the matching DuckDB version.
+The extension is built against DuckDB **1.5.6**; use the matching DuckDB version.
 
 ## Usage
 
