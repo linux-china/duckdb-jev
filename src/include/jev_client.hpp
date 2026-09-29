@@ -22,9 +22,9 @@ struct JevConfig {
 	string api_key;
 	string api_url;
 	string model;
-	idx_t batch_size = 40;
-	idx_t concurrency = 6;
-	idx_t timeout = 90;
+	idx_t batch_size = 20;
+	idx_t concurrency = 16;
+	idx_t timeout = 15;
 	bool notices = true;
 };
 

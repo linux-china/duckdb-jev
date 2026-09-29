@@ -66,8 +66,8 @@ macros use `rec`.
 | Setting | Default | Meaning |
 |---|---|---|
 | `jev_threshold` | `0.5` | probability at which `jev()` is true |
-| `jev_batch_size` | `40` | rows per API request |
-| `jev_concurrency` | `6` | parallel requests per chunk |
+| `jev_batch_size` | `20` | rows per API request |
+| `jev_concurrency` | `16` | parallel requests per chunk |
 | `jev_timeout` | `15` | seconds per request |
 | `jev_notices` | `true` | print one line per batch run (rows, requests, tokens, est. cost, ms) |
 

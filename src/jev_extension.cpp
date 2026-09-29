@@ -353,9 +353,9 @@ void RegisterOptions(ExtensionLoader &loader) {
 	*/
 	config.AddExtensionOption("jev_threshold", "Probability at which jev() is true", LogicalType::DOUBLE,
 	                          Value::DOUBLE(0.5));
-	config.AddExtensionOption("jev_batch_size", "Rows per API request", LogicalType::UBIGINT, Value::UBIGINT(40));
+	config.AddExtensionOption("jev_batch_size", "Rows per API request", LogicalType::UBIGINT, Value::UBIGINT(20));
 	config.AddExtensionOption("jev_concurrency", "Requests running in parallel per vector", LogicalType::UBIGINT,
-	                          Value::UBIGINT(6));
+	                          Value::UBIGINT(16));
 	config.AddExtensionOption("jev_timeout", "Seconds allowed per API request", LogicalType::UBIGINT,
 	                          Value::UBIGINT(15));
 	config.AddExtensionOption("jev_notices", "Print one line per API request to stderr", LogicalType::BOOLEAN,

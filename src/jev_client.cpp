@@ -276,8 +276,8 @@ JevConfig JevGetConfig(ClientContext &context) {
 	if (config.model.empty()) {
 		config.model = "jev-latest";
 	}
-	config.batch_size = GetIdxSetting(context, "jev_batch_size", 40, NumericLimits<idx_t>::Maximum());
-	config.concurrency = GetIdxSetting(context, "jev_concurrency", 6, JEV_MAX_CONCURRENCY);
+	config.batch_size = GetIdxSetting(context, "jev_batch_size", 20, NumericLimits<idx_t>::Maximum());
+	config.concurrency = GetIdxSetting(context, "jev_concurrency", 16, JEV_MAX_CONCURRENCY);
 	config.timeout = GetIdxSetting(context, "jev_timeout", 15, NumericLimits<idx_t>::Maximum());
 
 	Value notices;

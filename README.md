@@ -206,8 +206,8 @@ CREATE SECRET (
 | Setting           | Default                                | Meaning                                    |
 |-------------------|----------------------------------------|--------------------------------------------|
 | `jev_threshold`   | `0.5`                                  | probability at which `jev()` is true       |
-| `jev_batch_size`  | `40`                                   | rows per API request (must be >= 1)        |
-| `jev_concurrency` | `6`                                    | parallel requests per vector, capped at 64 |
+| `jev_batch_size`  | `20`                                   | rows per API request (must be >= 1)        |
+| `jev_concurrency` | `16`                                    | parallel requests per vector, capped at 64 |
 | `jev_timeout`     | `15`                                   | seconds per request                        |
 | `jev_notices`     | `true`                                 | print one line per API request to stderr   |
 
@@ -221,7 +221,7 @@ of that database shares; `jev_cache_clear()` empties it.
 
 `jev_concurrency` is per DuckDB thread, not per query: DuckDB may evaluate the function on
 several threads at once, so the requests in flight can reach DuckDB threads x
-`jev_concurrency` (capped at 64 per thread). The default batch of 40 rows carries 40
+`jev_concurrency` (capped at 64 per thread). The default batch of 20 rows carries 20
 questions in one request, which the live API answers in well under a second.
 
 Requests retry 429, 529, 5xx and transport errors with exponential backoff (0.5 s doubling
